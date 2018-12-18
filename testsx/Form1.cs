@@ -13,7 +13,6 @@ namespace testsx
 {
 	public partial class Form1 : Form
 	{
-
 		#region 变量
 		/// <summary>
 		/// 笔画时间(暂时用处不大)
@@ -31,7 +30,6 @@ namespace testsx
 		private List<Point> PtBuff = null;
 		#endregion
 
-
 		public Form1()
 		{
 			InitializeComponent();
@@ -39,30 +37,16 @@ namespace testsx
 
 		private void Form1_Load(object sender, EventArgs e)
 		{
-
+			//加载之前采集到一半的数据接着采集
+			//TrainData.LoadData("Data.json");
 		}
 
-		private void shouXie1_OutCharArray(char[] c)
-		{
-
-		}
-
-		private void shouXie1_Load(object sender, EventArgs e)
-		{
-
-		}
-
-		
 		public void Clear()
 		{
 			DrawTime = 0;
 			PtBuff = null;
 			ArrayPtBuff.Clear();
 			pictureBox1.Invalidate();
-		}
-
-		public void Initial()
-		{
 		}
 
 		#region 根据屏幕触摸反馈,记录笔画数据
@@ -113,17 +97,6 @@ namespace testsx
 			}
 		}
 
-		private void pictureBox1_Click(object sender, EventArgs e)
-		{
-
-		}
-
-		private void ShouXie_Load(object sender, EventArgs e)
-		{
-			//TrainData.LoadData("Data.json");
-		}
-
-
 		private void button1_Click(object sender, EventArgs e)
 		{
 			MatrixData.Clear();
@@ -133,9 +106,7 @@ namespace testsx
 
 		private void caiji_Click(object sender, EventArgs e)
 		{
-
 			var pointdd = new Point[ArrayPtBuff.Count][];
-
 			for (int i = 0; i < ArrayPtBuff.Count; i++)
 			{
 				pointdd[i] = ArrayPtBuff[i].ToArray();
@@ -163,6 +134,11 @@ namespace testsx
 			return traindata.ToDoubleMatrix(new Size(16, 16));
 		}
 
+		/// <summary>
+		/// 获取1维的矩阵
+		/// </summary>
+		/// <param name="td"></param>
+		/// <returns></returns>
 		private double[,] GetDim1Matrix(MatrixData td)
 		{
 			var matrix = td.ToDoubleMatrix(new Size(16, 16));
@@ -184,7 +160,7 @@ namespace testsx
 		}
 
 		/// <summary>
-		/// 字典元素
+		/// 字典里每个字的数据
 		/// </summary>
 		public class CharData
 		{
@@ -202,16 +178,14 @@ namespace testsx
 			public double distance = 0;
 		}
 
-		List<CharData> CDS = null;
+		List<CharData> Dict = null;
 
-		//识别
-		private void label3_Click(object sender, EventArgs e)
+
+		private void InitDict()
 		{
-
-			//CDS.Add
-			if (CDS == null)
+			if (Dict == null)
 			{
-				CDS = new List<CharData>();
+				Dict = new List<CharData>();
 				var conn = new OleDbConnection("Provider=Microsoft.Jet.OLEDB.4.0;Data Source=Dict.mdb"); //Jet OLEDB:Database Password=
 				var cmd = conn.CreateCommand();
 
@@ -240,25 +214,37 @@ namespace testsx
 				conn.Close();
 				foreach (DataRow item in dt.Rows)
 				{
-					CDS.Add(new CharData() { TheChar = item["汉字"].ToString()[0], Code = new string[] { item["笔顺"].ToString() } });
+					Dict.Add(new CharData() { TheChar = item["汉字"].ToString()[0], Code = new string[] { item["笔顺"].ToString() } });
 				}
 
 			}
+		}
+		
+		//识别
+		private void label3_Click(object sender, EventArgs e)
+		{
+			#region 准备字典
+			InitDict();
+			var dict = Dict.ToArray();
+			#endregion
 
-			//组建字典
-			var cds = CDS.ToArray();
-			var traindata = new MatrixData();
+			#region 把每个笔画录入矩阵数据
 			var pointdd = new Point[1][];
-
+			var traindata = new MatrixData();
 			for (int i = 0; i < ArrayPtBuff.Count; i++)
 			{
 				pointdd[0] = ArrayPtBuff[i].ToArray();
 				traindata.RecordOne(pointdd);
 			}
+			#endregion
 
-			var hbpn = new HBPN(File.ReadAllText("GData.json"));
+			//识别的数据
 			var test = GetDim1Matrix(traindata);
-			var result = "";
+			//笔画识别结果
+			var sortresult = "";
+
+			#region 让神经网络加载训练结果并进行识别
+			var hbpn = new HBPN(File.ReadAllText("GData.json"));
 			for (int i = 0; i < test.GetLength(0); i++)
 			{
 				var sim0 = hbpn.sim(test.GetColumn(i));
@@ -271,48 +257,53 @@ namespace testsx
 					like = k;
 				}
 
-				//result += "㇀㇄㇅㇆㇞㇡㇛㇌㇏㇐㇑"[like];
-				result += "123455555555555"[like];
+				//result += "㇐㇑㇀㇏㇕㇗㇡"[like];
+				sortresult += "123455555555555"[like];
 			}
+			#endregion
 
-			for (int i = 0; i < cds.Length; i++)
+			#region 这里计算字典中每个字与识别结果的相似度
+			for (int i = 0; i < dict.Length; i++)
 			{
-				cds[i].distance = EditorDistance.Levenshtein(cds[i].Code[0], result);
+				dict[i].distance = EditorDistance.Levenshtein(dict[i].Code[0], sortresult);
 			}
+			#endregion
 
-			for (int i = 0; i < cds.Length; i++)
+			#region 根据相似度,对字典进行排序
+			for (int i = 0; i < dict.Length; i++)
 			{
-				for (int j = i + 1; j < cds.Length; j++)
+				for (int j = i + 1; j < dict.Length; j++)
 				{
 
-					if (cds[i].distance < cds[j].distance)
+					if (dict[i].distance < dict[j].distance)
 					{
-						var temp = cds[i];
-						cds[i] = cds[j];
-						cds[j] = temp;
+						var temp = dict[i];
+						dict[i] = dict[j];
+						dict[j] = temp;
 					}
 				}
 			}
+			#endregion
 
-			var sortresult = "";
+			//字符识别结果
+			var result = "";
 
+			#region 根据相似度排序
 			for (int i = 0; i < 20; i++)
 			{
-				sortresult += cds[i].TheChar.ToString();
+				result += dict[i].TheChar.ToString();
 			}
-			//OutCharArray(sortresult.ToArray());
-			MessageBox.Show($"{result}\n{sortresult}");
+			#endregion
+			
+			MessageBox.Show(result, sortresult);
 
 			Clear();
 			traindata.Clear();
-			//EventS?.Invoke();
-
 		}
 
 		private void ClearButt_Click(object sender, EventArgs e)
 		{
 			Clear();
-			//EventS?.Invoke();
 		}
 
 	}
